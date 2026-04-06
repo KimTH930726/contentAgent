@@ -10,7 +10,7 @@ import { generatePrompt, type PromptGenerateResponse } from "@/lib/api";
 interface Props {
   hasData: boolean;
   collectionName?: string;
-  onPromptReady?: (prompt: string) => void;
+  onPromptReady?: (prompt: string, referenceImageUrls: string[]) => void;
 }
 
 export default function PromptSynthesizer({ hasData, collectionName, onPromptReady }: Props) {
@@ -49,7 +49,7 @@ export default function PromptSynthesizer({ hasData, collectionName, onPromptRea
     try {
       const data = await generatePrompt(input.trim(), collectionName);
       setResult(data);
-      onPromptReady?.(data.synthesized_prompt);
+      onPromptReady?.(data.synthesized_prompt, data.reference_image_urls ?? []);
     } catch {
       // No-op — in PoC we could show an error state
     } finally {
@@ -187,6 +187,27 @@ export default function PromptSynthesizer({ hasData, collectionName, onPromptRea
                     {result.synthesized_prompt}
                   </p>
                 </div>
+
+                {/* Reference images (top-K RAG) */}
+                {result.reference_image_urls && result.reference_image_urls.length > 0 && (
+                  <div>
+                    <p className="text-white/20 text-[10px] uppercase tracking-wider mb-2">
+                      Reference Images ({result.reference_image_urls.length} · top-K RAG)
+                    </p>
+                    <div className="flex gap-2 flex-wrap">
+                      {result.reference_image_urls.map((url, i) => (
+                        <div key={i} className="w-14 h-14 rounded-xl overflow-hidden border border-white/10 flex-shrink-0">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={`${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"}${url}`}
+                            alt={`ref-${i}`}
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {/* Hint */}
                 <p className="text-white/15 text-xs text-center">

@@ -1,4 +1,5 @@
 import json
+from typing import Optional
 import chromadb
 from chromadb.config import Settings
 from models.schemas import StyleDNA, SearchResult
@@ -40,24 +41,28 @@ def store_style_dna(
     filename: str,
     style_dna: StyleDNA,
     collection_name: str = "default",
+    image_url: Optional[str] = None,
 ) -> None:
     collection = get_collection()
+    metadata: dict = {
+        "filename": filename,
+        "collection_name": collection_name,
+        "style_dna_json": json.dumps(style_dna.model_dump()),
+    }
+    if image_url:
+        metadata["image_url"] = image_url
     collection.upsert(
         ids=[image_id],
         documents=[style_dna_to_embedding_text(style_dna)],
-        metadatas=[{
-            "filename": filename,
-            "collection_name": collection_name,
-            "style_dna_json": json.dumps(style_dna.model_dump()),
-        }],
+        metadatas=[metadata],
     )
 
 
 def search_style_dna(
     query: str,
     top_k: int = 5,
-    collection_name: str | None = None,
-) -> list[SearchResult]:
+    collection_name: Optional[str] = None,
+) -> list:
     collection = get_collection()
     count = collection.count()
     if count == 0:
@@ -92,11 +97,12 @@ def search_style_dna(
             filename=metadata["filename"],
             score=score,
             style_dna=style_dna,
+            image_url=metadata.get("image_url"),
         ))
     return search_results
 
 
-def list_all_entries(collection_name: str | None = None) -> list[dict]:
+def list_all_entries(collection_name: Optional[str] = None) -> list:
     collection = get_collection()
     if collection.count() == 0:
         return []
@@ -117,11 +123,12 @@ def list_all_entries(collection_name: str | None = None) -> list[dict]:
             "collection_name": metadata.get("collection_name", "default"),
             "embedding_text": result["documents"][i],
             "style_dna": style_dna,
+            "image_url": metadata.get("image_url"),
         })
     return entries
 
 
-def get_collections_summary() -> list[dict]:
+def get_collections_summary() -> list:
     """컬렉션별 통계 및 대표 색상 반환"""
     entries = list_all_entries()
     summary: dict[str, dict] = {}
@@ -133,6 +140,15 @@ def get_collections_summary() -> list[dict]:
         if len(summary[cn]["preview_colors"]) == 0:
             summary[cn]["preview_colors"] = e["style_dna"].color_palette[:4]
     return [{"name": k, **v} for k, v in summary.items()]
+
+
+def delete_entry(image_id: str) -> bool:
+    collection = get_collection()
+    existing = collection.get(ids=[image_id], include=[])
+    if not existing["ids"]:
+        return False
+    collection.delete(ids=[image_id])
+    return True
 
 
 def delete_collection_entries(collection_name: str) -> int:

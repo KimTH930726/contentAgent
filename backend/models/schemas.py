@@ -28,6 +28,7 @@ class SearchResult(BaseModel):
     filename: str
     score: float
     style_dna: StyleDNA
+    image_url: Optional[str] = None
 
 
 class SearchResponse(BaseModel):
@@ -58,6 +59,7 @@ class CreateCollectionRequest(BaseModel):
 class GenerateRequest(BaseModel):
     synthesized_prompt: str
     style_dna: Optional[StyleDNA] = None
+    reference_image_urls: List[str] = []
 
 
 class GenerateResponse(BaseModel):

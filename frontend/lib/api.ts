@@ -21,6 +21,7 @@ export interface SearchResult {
   filename: string;
   score: number;
   style_dna: StyleDNA;
+  image_url?: string;
 }
 
 export interface PromptGenerateResponse {
@@ -28,12 +29,14 @@ export interface PromptGenerateResponse {
   translated_query: string;
   retrieved: { query: string; results: SearchResult[] };
   synthesized_prompt: string;
+  reference_image_urls: string[];
 }
 
 export interface GenerateResponse {
   generation_id: string;
   prompt_used: string;
   image_base64: string;
+  reference_image_urls?: string[];
 }
 
 export interface QualityScore {
@@ -82,6 +85,13 @@ export async function deleteCollection(name: string): Promise<void> {
   if (!res.ok) throw new Error(await res.text());
 }
 
+export async function deleteDBEntry(imageId: string): Promise<void> {
+  const res = await fetch(`${BASE_URL}/db/entries/${encodeURIComponent(imageId)}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) throw new Error(await res.text());
+}
+
 // ── Analyze ───────────────────────────────────────────────────────────────────
 
 export async function analyzeImage(
@@ -121,11 +131,16 @@ export async function generatePrompt(
 export async function generateImage(
   synthesizedPrompt: string,
   styleDna?: StyleDNA,
+  referenceImageUrls?: string[],
 ): Promise<GenerateResponse> {
   const res = await fetch(`${BASE_URL}/generate`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ synthesized_prompt: synthesizedPrompt, style_dna: styleDna ?? null }),
+    body: JSON.stringify({
+      synthesized_prompt: synthesizedPrompt,
+      style_dna: styleDna ?? null,
+      reference_image_urls: referenceImageUrls ?? [],
+    }),
   });
   if (!res.ok) throw new Error(await res.text());
   return res.json();

@@ -1,13 +1,15 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { deleteDBEntry } from "@/lib/api";
 
 interface DBEntry {
   image_id: string;
   filename: string;
   collection_name: string;
   embedding_text: string;
+  image_url?: string;
   style_dna: {
     color_palette: string[];
     mood: string;
@@ -30,14 +32,24 @@ export default function CollectionViewer({ collectionName, refreshKey }: Props) 
   const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState<DBEntry | null>(null);
 
-  useEffect(() => {
+  const fetchEntries = useCallback(() => {
     if (!collectionName) return;
     setLoading(true);
     fetch(`${BASE_URL}/db/entries?collection_name=${encodeURIComponent(collectionName)}`)
       .then((r) => r.json())
       .then((d) => setEntries(d.entries))
       .finally(() => setLoading(false));
-  }, [collectionName, refreshKey]);
+  }, [collectionName]);
+
+  useEffect(() => { fetchEntries(); }, [fetchEntries, refreshKey]);
+
+  const handleDelete = async (entry: DBEntry, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!confirm(`"${entry.filename}" 항목을 삭제할까요?`)) return;
+    await deleteDBEntry(entry.image_id);
+    if (selected?.image_id === entry.image_id) setSelected(null);
+    fetchEntries();
+  };
 
   if (!collectionName) return null;
 
@@ -75,7 +87,7 @@ export default function CollectionViewer({ collectionName, refreshKey }: Props) 
             animate={{ opacity: 1, scale: 1 }}
             transition={{ delay: idx * 0.04 }}
             onClick={() => setSelected(selected?.image_id === entry.image_id ? null : entry)}
-            className="relative rounded-2xl overflow-hidden text-left transition-all"
+            className="group relative rounded-2xl overflow-hidden text-left transition-all"
             style={{
               border: selected?.image_id === entry.image_id
                 ? "1px solid rgba(124,58,237,0.6)"
@@ -85,13 +97,30 @@ export default function CollectionViewer({ collectionName, refreshKey }: Props) 
                 : "none",
             }}
           >
-            {/* 컬러 그라데이션 */}
-            <div className="h-20 relative" style={{
-              background: entry.style_dna.color_palette.length > 1
-                ? `linear-gradient(135deg, ${entry.style_dna.color_palette.join(", ")})`
-                : entry.style_dna.color_palette[0] ?? "#1a1a2e",
-            }}>
+            {/* 썸네일 or 컬러 그라데이션 */}
+            <div className="h-20 relative overflow-hidden" style={
+              entry.image_url ? undefined : {
+                background: entry.style_dna.color_palette.length > 1
+                  ? `linear-gradient(135deg, ${entry.style_dna.color_palette.join(", ")})`
+                  : entry.style_dna.color_palette[0] ?? "#1a1a2e",
+              }
+            }>
+              {entry.image_url && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={`${BASE_URL}${entry.image_url}`}
+                  alt={entry.filename}
+                  className="w-full h-full object-cover"
+                />
+              )}
               <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+              {/* 삭제 버튼 */}
+              <button
+                onClick={(e) => handleDelete(entry, e)}
+                className="absolute top-2 right-2 w-6 h-6 rounded-full bg-black/60 backdrop-blur-sm text-white/50 hover:text-red-400 hover:bg-black/80 text-xs opacity-0 group-hover:opacity-100 transition-all flex items-center justify-center"
+              >
+                ✕
+              </button>
               <div className="absolute bottom-2 left-2 right-2 flex flex-wrap gap-1">
                 {entry.style_dna.style_keywords.slice(0, 2).map((kw, i) => (
                   <span key={i} className="text-[9px] px-1.5 py-0.5 rounded-full bg-black/50 backdrop-blur-sm text-white/70 border border-white/10">

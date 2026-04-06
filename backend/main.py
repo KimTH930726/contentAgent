@@ -1,5 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from pathlib import Path
 from routers import analyze, search, prompt, generate, quality, db, collections
 
 app = FastAPI(
@@ -23,6 +25,11 @@ app.include_router(generate.router)
 app.include_router(quality.router)
 app.include_router(db.router)
 app.include_router(collections.router)
+
+# Serve uploaded images
+uploads_dir = Path(__file__).parent / "uploads"
+uploads_dir.mkdir(exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=str(uploads_dir)), name="uploads")
 
 
 @app.get("/health")

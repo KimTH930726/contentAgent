@@ -34,6 +34,7 @@ export default function Home() {
 
   // Tab 2 상태
   const [synthesizedPrompt, setSynthesizedPrompt] = useState<string | null>(null);
+  const [referenceImageUrls, setReferenceImageUrls] = useState<string[]>([]);
   const [generateResult, setGenerateResult]   = useState<GenerateResponse | null>(null);
   const [qualityResult, setQualityResult]     = useState<QualityCompareResponse | null>(null);
   const [latestPreviewUrl, setLatestPreviewUrl] = useState<string | null>(null);
@@ -74,18 +75,23 @@ export default function Home() {
   };
 
   // ── Tab 2 handlers ────────────────────────────────────────────────────────
-  const handlePromptReady = async (prompt: string) => {
+  const handlePromptReady = async (prompt: string, refUrls: string[]) => {
     setSynthesizedPrompt(prompt);
+    setReferenceImageUrls(refUrls);
     await pushStep("rag_search");
     await pushStep("prompt_ready", 200);
   };
 
   const handleGenerateImage = async () => {
-    if (!synthesizedPrompt || !latestAnalyze) return;
+    if (!synthesizedPrompt) return;
     setGenerateResult(null);
     setQualityResult(null);
     await pushStep("generating");
-    const result = await generateImage(synthesizedPrompt, latestAnalyze.style_dna);
+    const result = await generateImage(
+      synthesizedPrompt,
+      latestAnalyze?.style_dna,
+      referenceImageUrls,
+    );
     setGenerateResult(result);
   };
 
@@ -323,12 +329,12 @@ export default function Home() {
 
                     {/* T2I 결과 */}
                     <AnimatePresence>
-                      {generateResult && latestAnalyze && latestPreviewUrl && (
+                      {generateResult && (
                         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
                           <GeneratedImageCard
                             data={generateResult}
-                            originalImageId={latestAnalyze.image_id}
-                            styleDna={latestAnalyze.style_dna}
+                            originalImageId={latestAnalyze?.image_id ?? ""}
+                            styleDna={latestAnalyze?.style_dna}
                             onQualityResult={handleQualityResult}
                           />
                         </motion.div>

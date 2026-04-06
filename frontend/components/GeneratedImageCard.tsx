@@ -9,7 +9,7 @@ import { compareQuality } from "@/lib/api";
 interface Props {
   data: GenerateResponse;
   originalImageId: string;
-  styleDna: StyleDNA;
+  styleDna?: StyleDNA;
   onQualityResult: (result: QualityCompareResponse) => void;
 }
 
@@ -67,15 +67,17 @@ export default function GeneratedImageCard({ data, originalImageId, styleDna, on
         </div>
 
         {/* Color palette dots */}
-        <div className="absolute top-3 right-3 flex gap-1.5">
-          {styleDna.color_palette.slice(0, 4).map((color, i) => (
-            <div
-              key={i}
-              className="w-4 h-4 rounded-full border border-white/20 shadow-lg"
-              style={{ backgroundColor: color }}
-            />
-          ))}
-        </div>
+        {styleDna && (
+          <div className="absolute top-3 right-3 flex gap-1.5">
+            {styleDna.color_palette.slice(0, 4).map((color, i) => (
+              <div
+                key={i}
+                className="w-4 h-4 rounded-full border border-white/20 shadow-lg"
+                style={{ backgroundColor: color }}
+              />
+            ))}
+          </div>
+        )}
 
         {/* Bottom gradient */}
         <div className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-[#0a0a1a] to-transparent" />
