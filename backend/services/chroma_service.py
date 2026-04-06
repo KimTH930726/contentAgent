@@ -24,7 +24,6 @@ def get_collection():
 
 
 def style_dna_to_embedding_text(style_dna: StyleDNA) -> str:
-    """StyleDNA를 ChromaDB 임베딩용 텍스트로 변환"""
     parts = [
         f"mood: {style_dna.mood}",
         f"composition: {style_dna.composition}",
@@ -36,56 +35,57 @@ def style_dna_to_embedding_text(style_dna: StyleDNA) -> str:
     return " | ".join(parts)
 
 
-def store_style_dna(image_id: str, filename: str, style_dna: StyleDNA) -> None:
+def store_style_dna(
+    image_id: str,
+    filename: str,
+    style_dna: StyleDNA,
+    collection_name: str = "default",
+) -> None:
     collection = get_collection()
     collection.upsert(
         ids=[image_id],
         documents=[style_dna_to_embedding_text(style_dna)],
         metadatas=[{
             "filename": filename,
+            "collection_name": collection_name,
             "style_dna_json": json.dumps(style_dna.model_dump()),
         }],
     )
 
 
-def list_all_entries() -> list[dict]:
-    """저장된 모든 DNA 엔트리와 임베딩 텍스트 반환"""
+def search_style_dna(
+    query: str,
+    top_k: int = 5,
+    collection_name: str | None = None,
+) -> list[SearchResult]:
     collection = get_collection()
     count = collection.count()
     if count == 0:
         return []
 
-    result = collection.get(include=["documents", "metadatas"])
-    entries = []
-    for i, doc_id in enumerate(result["ids"]):
-        metadata = result["metadatas"][i]
-        style_dna = StyleDNA(**json.loads(metadata["style_dna_json"]))
-        entries.append({
-            "image_id": doc_id,
-            "filename": metadata["filename"],
-            "embedding_text": result["documents"][i],
-            "style_dna": style_dna,
-        })
-    return entries
+    where = {"collection_name": collection_name} if collection_name else None
 
+    # collection_name 필터 적용 시 해당 컬렉션 내 항목 수 확인
+    if where:
+        filtered = collection.get(where=where, include=[])
+        available = len(filtered["ids"])
+        if available == 0:
+            return []
+        n_results = min(top_k, available)
+    else:
+        n_results = min(top_k, count)
 
-def search_style_dna(query: str, top_k: int = 5) -> list[SearchResult]:
-    collection = get_collection()
-    count = collection.count()
-    if count == 0:
-        return []
+    kwargs = dict(query_texts=[query], n_results=n_results)
+    if where:
+        kwargs["where"] = where
 
-    results = collection.query(
-        query_texts=[query],
-        n_results=min(top_k, count),
-    )
+    results = collection.query(**kwargs)
 
     search_results = []
     for i, doc_id in enumerate(results["ids"][0]):
         metadata = results["metadatas"][0][i]
         distance = results["distances"][0][i]
-        score = round(1 - distance, 4)  # cosine distance → similarity score
-
+        score = round(1 - distance, 4)
         style_dna = StyleDNA(**json.loads(metadata["style_dna_json"]))
         search_results.append(SearchResult(
             image_id=doc_id,
@@ -93,5 +93,52 @@ def search_style_dna(query: str, top_k: int = 5) -> list[SearchResult]:
             score=score,
             style_dna=style_dna,
         ))
-
     return search_results
+
+
+def list_all_entries(collection_name: str | None = None) -> list[dict]:
+    collection = get_collection()
+    if collection.count() == 0:
+        return []
+
+    where = {"collection_name": collection_name} if collection_name else None
+    kwargs = dict(include=["documents", "metadatas"])
+    if where:
+        kwargs["where"] = where
+
+    result = collection.get(**kwargs)
+    entries = []
+    for i, doc_id in enumerate(result["ids"]):
+        metadata = result["metadatas"][i]
+        style_dna = StyleDNA(**json.loads(metadata["style_dna_json"]))
+        entries.append({
+            "image_id": doc_id,
+            "filename": metadata["filename"],
+            "collection_name": metadata.get("collection_name", "default"),
+            "embedding_text": result["documents"][i],
+            "style_dna": style_dna,
+        })
+    return entries
+
+
+def get_collections_summary() -> list[dict]:
+    """컬렉션별 통계 및 대표 색상 반환"""
+    entries = list_all_entries()
+    summary: dict[str, dict] = {}
+    for e in entries:
+        cn = e["collection_name"]
+        if cn not in summary:
+            summary[cn] = {"count": 0, "preview_colors": []}
+        summary[cn]["count"] += 1
+        if len(summary[cn]["preview_colors"]) == 0:
+            summary[cn]["preview_colors"] = e["style_dna"].color_palette[:4]
+    return [{"name": k, **v} for k, v in summary.items()]
+
+
+def delete_collection_entries(collection_name: str) -> int:
+    collection = get_collection()
+    existing = collection.get(where={"collection_name": collection_name}, include=[])
+    ids = existing["ids"]
+    if ids:
+        collection.delete(ids=ids)
+    return len(ids)

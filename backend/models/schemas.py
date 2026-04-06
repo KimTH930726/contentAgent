@@ -35,6 +35,24 @@ class SearchResponse(BaseModel):
     results: List[SearchResult]
 
 
+# ── Collections ──────────────────────────────────────────────────────────────
+
+class CollectionInfo(BaseModel):
+    name: str
+    description: str
+    entry_count: int
+    preview_colors: List[str]   # 대표 색상 (첫 번째 이미지 팔레트)
+
+
+class CollectionListResponse(BaseModel):
+    collections: List[CollectionInfo]
+
+
+class CreateCollectionRequest(BaseModel):
+    name: str
+    description: str = ""
+
+
 # ── T2I Generation ──────────────────────────────────────────────────────────
 
 class GenerateRequest(BaseModel):

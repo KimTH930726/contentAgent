@@ -30,14 +30,6 @@ export interface PromptGenerateResponse {
   synthesized_prompt: string;
 }
 
-export async function analyzeImage(file: File): Promise<AnalyzeResponse> {
-  const form = new FormData();
-  form.append("file", file);
-  const res = await fetch(`${BASE_URL}/analyze`, { method: "POST", body: form });
-  if (!res.ok) throw new Error(await res.text());
-  return res.json();
-}
-
 export interface GenerateResponse {
   generation_id: string;
   prompt_used: string;
@@ -57,9 +49,78 @@ export interface QualityCompareResponse {
   passed: boolean;
 }
 
+export interface CollectionInfo {
+  name: string;
+  description: string;
+  entry_count: number;
+  preview_colors: string[];
+}
+
+// ── Collections ──────────────────────────────────────────────────────────────
+
+export async function listCollections(): Promise<CollectionInfo[]> {
+  const res = await fetch(`${BASE_URL}/collections`);
+  if (!res.ok) throw new Error(await res.text());
+  const data = await res.json();
+  return data.collections;
+}
+
+export async function createCollection(name: string, description = ""): Promise<CollectionInfo> {
+  const res = await fetch(`${BASE_URL}/collections`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, description }),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function deleteCollection(name: string): Promise<void> {
+  const res = await fetch(`${BASE_URL}/collections/${encodeURIComponent(name)}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) throw new Error(await res.text());
+}
+
+// ── Analyze ───────────────────────────────────────────────────────────────────
+
+export async function analyzeImage(
+  file: File,
+  collectionName = "default",
+): Promise<AnalyzeResponse> {
+  const form = new FormData();
+  form.append("file", file);
+  form.append("collection_name", collectionName);
+  const res = await fetch(`${BASE_URL}/analyze`, { method: "POST", body: form });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+// ── Prompt ────────────────────────────────────────────────────────────────────
+
+export async function generatePrompt(
+  userInput: string,
+  collectionName?: string,
+  topK = 5,
+): Promise<PromptGenerateResponse> {
+  const res = await fetch(`${BASE_URL}/prompt/generate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      user_input: userInput,
+      top_k: topK,
+      collection_name: collectionName ?? null,
+    }),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+// ── Generate ──────────────────────────────────────────────────────────────────
+
 export async function generateImage(
   synthesizedPrompt: string,
-  styleDna?: StyleDNA
+  styleDna?: StyleDNA,
 ): Promise<GenerateResponse> {
   const res = await fetch(`${BASE_URL}/generate`, {
     method: "POST",
@@ -70,9 +131,11 @@ export async function generateImage(
   return res.json();
 }
 
+// ── Quality ───────────────────────────────────────────────────────────────────
+
 export async function compareQuality(
   originalImageId: string,
-  generatedImageBase64: string
+  generatedImageBase64: string,
 ): Promise<QualityCompareResponse> {
   const res = await fetch(`${BASE_URL}/quality/compare`, {
     method: "POST",
@@ -81,19 +144,6 @@ export async function compareQuality(
       original_image_id: originalImageId,
       generated_image_base64: generatedImageBase64,
     }),
-  });
-  if (!res.ok) throw new Error(await res.text());
-  return res.json();
-}
-
-export async function generatePrompt(
-  userInput: string,
-  topK = 5
-): Promise<PromptGenerateResponse> {
-  const res = await fetch(`${BASE_URL}/prompt/generate`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ user_input: userInput, top_k: topK }),
   });
   if (!res.ok) throw new Error(await res.text());
   return res.json();

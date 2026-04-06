@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from routers import analyze, search, prompt, generate, quality, db
+from routers import analyze, search, prompt, generate, quality, db, collections
 
 app = FastAPI(
     title="Brand Style DNA Agent",
@@ -22,6 +22,7 @@ app.include_router(prompt.router)
 app.include_router(generate.router)
 app.include_router(quality.router)
 app.include_router(db.router)
+app.include_router(collections.router)
 
 
 @app.get("/health")

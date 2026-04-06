@@ -9,10 +9,11 @@ import { generatePrompt, type PromptGenerateResponse } from "@/lib/api";
 
 interface Props {
   hasData: boolean;
+  collectionName?: string;
   onPromptReady?: (prompt: string) => void;
 }
 
-export default function PromptSynthesizer({ hasData, onPromptReady }: Props) {
+export default function PromptSynthesizer({ hasData, collectionName, onPromptReady }: Props) {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<PromptGenerateResponse | null>(null);
@@ -46,7 +47,7 @@ export default function PromptSynthesizer({ hasData, onPromptReady }: Props) {
     setLoading(true);
     setResult(null);
     try {
-      const data = await generatePrompt(input.trim());
+      const data = await generatePrompt(input.trim(), collectionName);
       setResult(data);
       onPromptReady?.(data.synthesized_prompt);
     } catch {
