@@ -21,6 +21,7 @@ class AnalyzeResponse(BaseModel):
 class SearchRequest(BaseModel):
     query: str
     top_k: int = 5
+    collection_name: Optional[str] = None
 
 
 class SearchResult(BaseModel):

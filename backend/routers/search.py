@@ -13,7 +13,7 @@ async def search_styles(request: SearchRequest):
     if request.top_k < 1 or request.top_k > 20:
         raise HTTPException(status_code=400, detail="top_k는 1~20 사이여야 합니다.")
 
-    results = search_style_dna(request.query, request.top_k)
+    results = search_style_dna(request.query, request.top_k, request.collection_name)
 
     return SearchResponse(
         query=request.query,
