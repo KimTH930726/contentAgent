@@ -1,11 +1,14 @@
 """
 Prompt Synthesis Service
-실제 구현 시 Gemini Flash Text API로 교체하세요.
+
+우선순위:
+  1. LLM (Gemini Flash) — GOOGLE_API_KEY 환경변수가 있을 때
+  2. Rule-based fallback — API key 없거나 LLM 호출 실패 시
 """
 import colorsys
 from models.schemas import SearchResult
 
-# ── 한국어 → 영어 번역 ───────────────────────────────────────────────────────
+# ── Rule-based 번역 사전 (LLM fallback) ─────────────────────────────────────
 
 KO_TO_EN: dict[str, list[str]] = {
     # 밝기/분위기
@@ -67,15 +70,7 @@ KO_TO_EN: dict[str, list[str]] = {
 }
 
 
-def translate_query(korean_query: str) -> str:
-    """
-    실제 구현:
-        model = genai.GenerativeModel("gemini-1.5-flash")
-        response = model.generate_content(
-            f"Translate to concise English keywords for image generation: '{korean_query}'"
-        )
-        return response.text.strip()
-    """
+def _rule_translate(korean_query: str) -> str:
     import re
     tokens = re.split(r"[\s,./]+", korean_query.strip())
     en_keywords: list[str] = []
@@ -86,6 +81,11 @@ def translate_query(korean_query: str) -> str:
         elif token.isascii() and token:
             en_keywords.append(token)
     return ", ".join(dict.fromkeys(en_keywords)) if en_keywords else korean_query
+
+
+def translate_query(korean_query: str) -> str:
+    """동기 래퍼 — rule-based. 비동기 LLM 번역은 synthesize_prompt 내부에서 처리."""
+    return _rule_translate(korean_query)
 
 
 # ── 색상 이름 변환 ───────────────────────────────────────────────────────────
@@ -100,15 +100,15 @@ def _hex_to_hsl(hex_color: str) -> tuple[float, float, float]:
 
 
 def _hue_name(h: float) -> str:
-    if h < 15:   return "red"
-    if h < 40:   return "orange"
-    if h < 70:   return "yellow"
-    if h < 80:   return "yellow-green"
-    if h < 150:  return "green"
-    if h < 195:  return "teal"
-    if h < 255:  return "blue"
-    if h < 285:  return "purple"
-    if h < 330:  return "pink"
+    if h < 15:  return "red"
+    if h < 40:  return "orange"
+    if h < 70:  return "yellow"
+    if h < 80:  return "yellow-green"
+    if h < 150: return "green"
+    if h < 195: return "teal"
+    if h < 255: return "blue"
+    if h < 285: return "purple"
+    if h < 330: return "pink"
     return "red"
 
 
@@ -131,17 +131,17 @@ def hex_to_color_name(hex_color: str) -> str:
     return f"{lightness} {saturation}{_hue_name(h)}"
 
 
-# ── 프롬프트 합성 ────────────────────────────────────────────────────────────
+# ── Rule-based 프롬프트 합성 (fallback) ─────────────────────────────────────
 
-# 무드별 negative prompt 사전
 MOOD_NEGATIVES: dict[str, list[str]] = {
-    "dark":      ["overexposed", "washed out", "bright", "cheerful"],
-    "luxury":    ["cheap", "cluttered", "casual", "low quality"],
-    "fresh":     ["dark", "gloomy", "saturated", "harsh"],
-    "natural":   ["artificial", "plastic", "neon", "industrial"],
-    "vibrant":   ["dull", "monotone", "desaturated", "flat"],
-    "minimal":   ["busy", "cluttered", "decorative", "ornate"],
-    "warm":      ["cold", "blue tones", "sterile", "clinical"],
+    "dark":    ["overexposed", "washed out", "bright", "cheerful"],
+    "luxury":  ["cheap", "cluttered", "casual", "low quality"],
+    "fresh":   ["dark", "gloomy", "saturated", "harsh"],
+    "natural": ["artificial", "plastic", "neon", "industrial"],
+    "vibrant": ["dull", "monotone", "desaturated", "flat"],
+    "minimal": ["busy", "cluttered", "decorative", "ornate"],
+    "warm":    ["cold", "blue tones", "sterile", "clinical"],
+    "radiant": ["dark", "gloomy", "murky", "harsh"],
 }
 
 BASE_NEGATIVES = [
@@ -162,7 +162,6 @@ def _build_negative(moods: list[str]) -> str:
 
 
 def _infer_quality_tags(lighting: str, mood: str) -> str:
-    """조명/무드에 맞는 촬영 컨텍스트 태그 생성 (studio 고정 제거)."""
     lighting_lower = lighting.lower()
     mood_lower = mood.lower()
     if any(w in lighting_lower for w in ["natural", "outdoor", "sunlight", "golden hour"]):
@@ -177,10 +176,9 @@ def _infer_quality_tags(lighting: str, mood: str) -> str:
 
 
 def _deduplicate_moods(results: list[SearchResult]) -> list[str]:
-    """유사도 가중치 기반으로 상충 무드 제거 — 1위 mood가 기준."""
+    """유사도 1위 mood 기준으로 충돌 무드 제거."""
     if not results:
         return []
-    # 1위 mood를 기준으로 상충하는 키워드가 있는 mood 제거
     CONFLICTING: list[tuple[set[str], set[str]]] = [
         ({"dark", "moody", "dramatic"}, {"bright", "fresh", "airy", "cheerful", "radiant"}),
         ({"warm", "golden"},            {"cool", "crisp", "cold"}),
@@ -188,7 +186,6 @@ def _deduplicate_moods(results: list[SearchResult]) -> list[str]:
     ]
     top_mood = results[0].style_dna.mood.lower()
     kept: list[str] = [results[0].style_dna.mood]
-
     for r in results[1:]:
         candidate = r.style_dna.mood.lower()
         conflict = False
@@ -202,24 +199,11 @@ def _deduplicate_moods(results: list[SearchResult]) -> list[str]:
                 break
         if not conflict and candidate not in [m.lower() for m in kept]:
             kept.append(r.style_dna.mood)
+    return kept[:2]
 
-    return kept[:2]  # 최대 2개 무드만 사용
 
-
-async def synthesize_prompt(user_input: str, results: list[SearchResult]) -> str:
-    """
-    실제 구현:
-        context = format_dna_context(results)
-        response = model.generate_content(
-            f"Brand DNA:\n{context}\n\nUser request: {user_input}\n"
-            "Write a detailed, structured image generation prompt in English. "
-            "Include: scene description, style, lighting, composition, color palette (in words), "
-            "technical specs. End with --neg [negative prompts]"
-        )
-        return response.text
-    """
-    translated = translate_query(user_input)
-
+def _rule_synthesize(translated: str, results: list[SearchResult]) -> str:
+    """Rule-based 프롬프트 합성 (LLM 없을 때 사용)."""
     if not results:
         return (
             f"{translated}, professional photography, high quality, "
@@ -227,14 +211,11 @@ async def synthesize_prompt(user_input: str, results: list[SearchResult]) -> str
             f"--neg {', '.join(BASE_NEGATIVES)}"
         )
 
-    # 유사도 순 정렬 보장 (score 내림차순)
     sorted_results = sorted(results, key=lambda r: r.score, reverse=True)
-    top = sorted_results[:3]
-    best = top[0]  # 가장 유사한 이미지 — 이 DNA가 기준
+    top  = sorted_results[:3]
+    best = top[0]
 
-    # ── DNA 수집 (1위 우선, 충돌 무드 제거) ──
     moods        = _deduplicate_moods(top)
-    # lighting/composition은 1위 우선 사용
     lighting     = best.style_dna.lighting
     composition  = best.style_dna.composition
 
@@ -247,32 +228,39 @@ async def synthesize_prompt(user_input: str, results: list[SearchResult]) -> str
     unique_keywords = list(dict.fromkeys(all_keywords))[:6]
     color_names     = list(dict.fromkeys(hex_to_color_name(c) for c in all_colors))[:5]
 
-    # raw_description에서 scene 힌트 추출 (첫 문장만)
-    raw = best.style_dna.raw_description.strip()
+    raw        = best.style_dna.raw_description.strip()
     scene_hint = raw.split(".")[0].strip() if raw else ""
 
-    # ── 구조화된 프롬프트 조립 ──
-    # 1. 장면 묘사 (raw_description 첫 문장) + 사용자 요청
-    subject_line = f"{scene_hint}, {translated}" if scene_hint else translated
-
-    # 2. 스타일 & 무드 (충돌 제거된 무드 최대 2개)
-    style_line = f"{', '.join(moods)} aesthetic, {', '.join(unique_keywords)}"
-
-    # 3. 조명 & 구도 (1위 DNA 기준)
+    subject_line   = f"{scene_hint}, {translated}" if scene_hint else translated
+    style_line     = f"{', '.join(moods)} aesthetic, {', '.join(unique_keywords)}"
     technical_line = f"{lighting} lighting, {composition} composition"
+    color_line     = f"color palette: {', '.join(color_names)}"
+    quality_line   = _infer_quality_tags(lighting, moods[0] if moods else "")
+    negative_line  = f"--neg {_build_negative(moods)}"
 
-    # 4. 색상 팔레트 (영어 이름)
-    color_line = f"color palette: {', '.join(color_names)}"
-
-    # 5. 촬영 컨텍스트 태그 (조명/무드에 따라 동적)
-    quality_line = _infer_quality_tags(lighting, moods[0] if moods else "")
-
-    # 6. Negative prompt
-    negative_line = f"--neg {_build_negative(moods)}"
-
-    main_prompt = ", ".join([
-        subject_line, style_line, technical_line,
-        color_line, quality_line,
-    ])
-
+    main_prompt = ", ".join([subject_line, style_line, technical_line, color_line, quality_line])
     return f"{main_prompt}\n{negative_line}"
+
+
+# ── 메인 합성 함수 ────────────────────────────────────────────────────────────
+
+async def synthesize_prompt(user_input: str, results: list[SearchResult]) -> str:
+    """
+    1순위: LLM (Gemini Flash) — 번역 + 프롬프트 합성 모두 LLM으로
+    2순위: Rule-based fallback (API key 없거나 LLM 실패 시)
+    """
+    from services import llm_service
+
+    if llm_service.is_available():
+        # 1. LLM 번역
+        translated_llm = await llm_service.translate_query(user_input)
+        translated = translated_llm or _rule_translate(user_input)
+
+        # 2. LLM 프롬프트 합성
+        llm_result = await llm_service.synthesize_prompt(user_input, translated, results)
+        if llm_result:
+            return llm_result
+
+    # Fallback: rule-based
+    translated = _rule_translate(user_input)
+    return _rule_synthesize(translated, results)
