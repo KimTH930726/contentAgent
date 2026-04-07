@@ -106,6 +106,31 @@ export async function analyzeImage(
   return res.json();
 }
 
+// ── Search ────────────────────────────────────────────────────────────────────
+
+export interface SearchResponse {
+  query: string;
+  results: SearchResult[];
+}
+
+export async function searchStyles(
+  query: string,
+  topK = 10,
+  collectionName?: string,
+): Promise<SearchResponse> {
+  const res = await fetch(`${BASE_URL}/search`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      query,
+      top_k: topK,
+      collection_name: collectionName ?? null,
+    }),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
 // ── Prompt ────────────────────────────────────────────────────────────────────
 
 export async function generatePrompt(

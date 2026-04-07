@@ -11,14 +11,16 @@ import PromptSynthesizer from "@/components/PromptSynthesizer";
 import GeneratedImageCard from "@/components/GeneratedImageCard";
 import QualityTestPanel from "@/components/QualityTestPanel";
 import AgentTimeline from "@/components/AgentTimeline";
+import ImageSimilaritySearch from "@/components/ImageSimilaritySearch";
 import type { AgentStep } from "@/components/AgentTimeline";
 import type { AnalyzeResponse, GenerateResponse, QualityCompareResponse } from "@/lib/api";
 import { generateImage } from "@/lib/api";
 
-type Tab = "build" | "generate";
+type Tab = "build" | "search" | "generate";
 
 const TABS: { id: Tab; label: string; sub: string }[] = [
   { id: "build",    label: "브랜드 구축",   sub: "컬렉션 생성 + 이미지 업로드" },
+  { id: "search",   label: "이미지 검색",   sub: "스타일 유사도 검색 + 검수" },
   { id: "generate", label: "콘텐츠 생성",   sub: "브랜드 DNA 확인 + 프롬프트 생성" },
 ];
 
@@ -248,7 +250,46 @@ export default function Home() {
           )}
 
           {/* ════════════════════════════════════════════════════════
-              TAB 2 — 콘텐츠 생성
+              TAB 2 — 이미지 검색
+          ════════════════════════════════════════════════════════ */}
+          {tab === "search" && (
+            <motion.div
+              key="search"
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.3 }}
+              className="space-y-5"
+            >
+              {/* 브랜드 선택 바 */}
+              <div className="rounded-2xl border border-white/[0.07] bg-white/[0.03] p-4">
+                <p className="text-white/30 text-xs mb-3 uppercase tracking-wider">브랜드 선택 (선택 시 해당 브랜드 내에서만 검색)</p>
+                <CollectionManager
+                  selectedCollection={selectedCollection}
+                  onSelect={selectCollection}
+                  onCollectionsChange={() => setDbRefresh((n) => n + 1)}
+                />
+              </div>
+
+              <div className="rounded-2xl border border-white/[0.07] bg-white/[0.03] p-5">
+                <div className="flex items-center gap-2 mb-4">
+                  <div className="w-2 h-2 rounded-full bg-cyan-400" />
+                  <p className="text-white/70 text-sm font-medium">
+                    {selectedCollection
+                      ? `"${selectedCollection}" 브랜드 내 스타일 검색`
+                      : "전체 브랜드 스타일 검색"}
+                  </p>
+                  {!selectedCollection && (
+                    <span className="text-white/25 text-xs">— 브랜드 선택 시 해당 브랜드로 범위 한정</span>
+                  )}
+                </div>
+                <ImageSimilaritySearch collectionName={selectedCollection || undefined} />
+              </div>
+            </motion.div>
+          )}
+
+          {/* ════════════════════════════════════════════════════════
+              TAB 3 — 콘텐츠 생성
           ════════════════════════════════════════════════════════ */}
           {tab === "generate" && (
             <motion.div
