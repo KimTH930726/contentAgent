@@ -16,8 +16,10 @@ interface Props {
 export default function PromptSynthesizer({ hasData, collectionName, onPromptReady }: Props) {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [resyncing, setResyncing] = useState(false);
   const [result, setResult] = useState<PromptGenerateResponse | null>(null);
   const [copied, setCopied] = useState(false);
+  const [excludedIds, setExcludedIds] = useState<Set<string>>(new Set());
   const borderRef = useRef<HTMLDivElement>(null);
   const rotationRef = useRef({ angle: 0 });
 
@@ -46,14 +48,43 @@ export default function PromptSynthesizer({ hasData, collectionName, onPromptRea
     if (!input.trim() || loading) return;
     setLoading(true);
     setResult(null);
+    setExcludedIds(new Set());
     try {
       const data = await generatePrompt(input.trim(), collectionName);
       setResult(data);
       onPromptReady?.(data.synthesized_prompt, data.reference_image_urls ?? []);
     } catch {
-      // No-op — in PoC we could show an error state
+      // No-op
     } finally {
       setLoading(false);
+    }
+  };
+
+  const toggleExclude = (imageId: string) => {
+    setExcludedIds((prev) => {
+      const next = new Set(prev);
+      next.has(imageId) ? next.delete(imageId) : next.add(imageId);
+      return next;
+    });
+  };
+
+  const handleResynthesize = async () => {
+    if (!result || resyncing || excludedIds.size === 0) return;
+    setResyncing(true);
+    try {
+      const data = await generatePrompt(
+        result.user_input,
+        collectionName,
+        5,
+        Array.from(excludedIds),
+      );
+      setResult(data);
+      setExcludedIds(new Set());
+      onPromptReady?.(data.synthesized_prompt, data.reference_image_urls ?? []);
+    } catch {
+      // No-op
+    } finally {
+      setResyncing(false);
     }
   };
 
@@ -134,38 +165,162 @@ export default function PromptSynthesizer({ hasData, collectionName, onPromptRea
                   </div>
                 )}
 
-                {/* Retrieved results */}
+                {/* I2T → RAG 파이프라인 */}
                 <div>
-                  <p className="text-white/30 text-xs uppercase tracking-wider mb-3">
-                    Retrieved Brand DNA ({result.retrieved.results.length})
-                  </p>
-                  <div className="space-y-2">
-                    {result.retrieved.results.map((r, i) => (
-                      <motion.div
-                        key={r.image_id}
-                        initial={{ opacity: 0, x: -8 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: i * 0.06 }}
-                        className="flex items-center gap-3 p-2 rounded-lg bg-white/[0.03] border border-white/[0.05]"
-                      >
-                        <div
-                          className="w-2 h-2 rounded-full flex-shrink-0"
-                          style={{
-                            backgroundColor: r.style_dna.color_palette[0] ?? "#7c3aed",
-                          }}
-                        />
-                        <span className="text-white/40 text-xs truncate flex-1">
-                          {r.style_dna.style_keywords.slice(0, 3).join(" · ")}
-                        </span>
-                        <span className="text-cyan-400/60 text-xs font-mono flex-shrink-0">
-                          {(r.score * 100).toFixed(0)}%
-                        </span>
-                      </motion.div>
-                    ))}
-                    {result.retrieved.results.length === 0 && (
-                      <p className="text-white/20 text-xs">분석된 이미지가 없습니다. 먼저 이미지를 업로드하세요.</p>
-                    )}
+                  <div className="flex items-center gap-2 mb-3">
+                    <p className="text-white/30 text-xs uppercase tracking-wider">
+                      Image → DNA → Prompt 파이프라인
+                    </p>
+                    <span className="text-white/15 text-[10px]">({result.retrieved.results.length}개 참조)</span>
                   </div>
+
+                  {result.retrieved.results.length === 0 ? (
+                    <p className="text-white/20 text-xs">분석된 이미지가 없습니다. 먼저 이미지를 업로드하세요.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {result.retrieved.results.map((r, i) => {
+                        const excluded = excludedIds.has(r.image_id);
+                        return (
+                          <motion.div
+                            key={r.image_id}
+                            initial={{ opacity: 0, y: 6 }}
+                            animate={{ opacity: excluded ? 0.35 : 1, y: 0 }}
+                            transition={{ delay: i * 0.07 }}
+                            className="rounded-xl overflow-hidden transition-all"
+                            style={{
+                              border: excluded
+                                ? "1px solid rgba(239,68,68,0.25)"
+                                : "1px solid rgba(255,255,255,0.07)",
+                              background: excluded
+                                ? "rgba(239,68,68,0.04)"
+                                : "rgba(255,255,255,0.02)",
+                            }}
+                          >
+                            <div className="flex gap-3 p-2.5">
+                              {/* 이미지 썸네일 */}
+                              <div className="w-14 h-14 rounded-lg overflow-hidden flex-shrink-0 border border-white/10 relative">
+                                {r.image_url ? (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img
+                                    src={`${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"}${r.image_url}`}
+                                    alt={r.filename}
+                                    className="w-full h-full object-cover"
+                                  />
+                                ) : (
+                                  <div className="w-full h-full flex flex-col">
+                                    {r.style_dna.color_palette.slice(0, 3).map((c, ci) => (
+                                      <div key={ci} className="flex-1" style={{ backgroundColor: c }} />
+                                    ))}
+                                  </div>
+                                )}
+                                {excluded && (
+                                  <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
+                                    <span className="text-red-400 text-lg font-bold">✕</span>
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* 화살표 */}
+                              <div className="flex items-center text-white/15 text-xs flex-shrink-0">→</div>
+
+                              {/* DNA 추출 결과 */}
+                              <div className="flex-1 min-w-0 space-y-1">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-white/50 text-[10px] font-medium capitalize truncate">
+                                    {r.style_dna.mood}
+                                  </span>
+                                  <span className="text-[9px] px-1.5 py-0.5 rounded bg-cyan-400/15 text-cyan-300/70 font-mono flex-shrink-0">
+                                    {(r.score * 100).toFixed(0)}% 유사
+                                  </span>
+                                  {i === 0 && !excluded && (
+                                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-violet-500/20 text-violet-300/70 flex-shrink-0">
+                                      1순위
+                                    </span>
+                                  )}
+                                  {excluded && (
+                                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-red-500/20 text-red-400/70 flex-shrink-0">
+                                      제외됨
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="flex flex-wrap gap-1">
+                                  {r.style_dna.style_keywords.slice(0, 4).map((kw) => (
+                                    <span key={kw} className="text-[9px] px-1.5 py-0.5 rounded bg-white/[0.05] text-white/35">
+                                      {kw}
+                                    </span>
+                                  ))}
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-white/15 text-[9px]">조명:</span>
+                                  <span className="text-white/35 text-[9px]">{r.style_dna.lighting}</span>
+                                  <span className="text-white/10 text-[9px]">·</span>
+                                  <span className="text-white/15 text-[9px]">구도:</span>
+                                  <span className="text-white/35 text-[9px] truncate">{r.style_dna.composition}</span>
+                                </div>
+                              </div>
+
+                              {/* 컬러 팔레트 + 제외 버튼 */}
+                              <div className="flex flex-col items-end gap-1 justify-between flex-shrink-0">
+                                <button
+                                  onClick={() => toggleExclude(r.image_id)}
+                                  className="text-[9px] px-2 py-0.5 rounded-lg transition-all"
+                                  style={{
+                                    background: excluded ? "rgba(239,68,68,0.15)" : "rgba(255,255,255,0.05)",
+                                    border: excluded ? "1px solid rgba(239,68,68,0.3)" : "1px solid rgba(255,255,255,0.08)",
+                                    color: excluded ? "rgba(239,68,68,0.8)" : "rgba(255,255,255,0.3)",
+                                  }}
+                                >
+                                  {excluded ? "복원" : "제외"}
+                                </button>
+                                <div className="flex flex-col gap-1">
+                                  {r.style_dna.color_palette.slice(0, 4).map((c, ci) => (
+                                    <div key={ci} className="w-3 h-3 rounded-sm border border-white/10" style={{ backgroundColor: c }} />
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+                          </motion.div>
+                        );
+                      })}
+
+                      {/* 재합성 버튼 */}
+                      <AnimatePresence>
+                        {excludedIds.size > 0 && (
+                          <motion.div
+                            initial={{ opacity: 0, y: 4 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -4 }}
+                          >
+                            <motion.button
+                              onClick={handleResynthesize}
+                              disabled={resyncing}
+                              whileHover={{ scale: 1.02 }}
+                              whileTap={{ scale: 0.98 }}
+                              className="w-full py-2.5 rounded-xl text-xs font-medium transition-all disabled:opacity-40 flex items-center justify-center gap-2"
+                              style={{
+                                background: "linear-gradient(135deg, rgba(124,58,237,0.2), rgba(239,68,68,0.15))",
+                                border: "1px solid rgba(124,58,237,0.3)",
+                                color: "rgba(255,255,255,0.75)",
+                              }}
+                            >
+                              {resyncing ? (
+                                <>
+                                  <span>재합성 중</span>
+                                  {[0,1,2].map(i => (
+                                    <motion.span key={i} className="inline-block w-1 h-1 rounded-full bg-violet-400"
+                                      animate={{ opacity: [0.3,1,0.3] }}
+                                      transition={{ duration: 0.8, delay: i * 0.15, repeat: Infinity }} />
+                                  ))}
+                                </>
+                              ) : (
+                                `${excludedIds.size}개 제외하고 프롬프트 재합성 →`
+                              )}
+                            </motion.button>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
+                  )}
                 </div>
 
                 {/* Final synthesized prompt */}
@@ -187,27 +342,6 @@ export default function PromptSynthesizer({ hasData, collectionName, onPromptRea
                     {result.synthesized_prompt}
                   </p>
                 </div>
-
-                {/* Reference images (top-K RAG) */}
-                {result.reference_image_urls && result.reference_image_urls.length > 0 && (
-                  <div>
-                    <p className="text-white/20 text-[10px] uppercase tracking-wider mb-2">
-                      Reference Images ({result.reference_image_urls.length} · top-K RAG)
-                    </p>
-                    <div className="flex gap-2 flex-wrap">
-                      {result.reference_image_urls.map((url, i) => (
-                        <div key={i} className="w-14 h-14 rounded-xl overflow-hidden border border-white/10 flex-shrink-0">
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
-                            src={`${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"}${url}`}
-                            alt={`ref-${i}`}
-                            className="w-full h-full object-cover"
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
 
                 {/* Hint */}
                 <p className="text-white/15 text-xs text-center">

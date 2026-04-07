@@ -133,6 +133,16 @@ export default function ImageSimilaritySearch({ collectionName }: Props) {
               )}
             </div>
 
+            {/* 컬렉션 이미지가 적을 때 안내 */}
+            {results.length > 0 && results.length <= 5 && (
+              <div className="px-1 flex items-center gap-1.5">
+                <div className="w-1 h-1 rounded-full bg-white/20" />
+                <p className="text-white/20 text-xs">
+                  컬렉션 내 이미지가 {results.length}개뿐이라 전체 표시 중 — 이미지를 더 추가하면 검색 정확도가 올라가요
+                </p>
+              </div>
+            )}
+
             {results.length === 0 ? (
               <GlassCard className="p-8 text-center">
                 <p className="text-white/25 text-sm">

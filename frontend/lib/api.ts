@@ -137,6 +137,7 @@ export async function generatePrompt(
   userInput: string,
   collectionName?: string,
   topK = 5,
+  excludeIds: string[] = [],
 ): Promise<PromptGenerateResponse> {
   const res = await fetch(`${BASE_URL}/prompt/generate`, {
     method: "POST",
@@ -145,6 +146,7 @@ export async function generatePrompt(
       user_input: userInput,
       top_k: topK,
       collection_name: collectionName ?? null,
+      exclude_ids: excludeIds,
     }),
   });
   if (!res.ok) throw new Error(await res.text());
