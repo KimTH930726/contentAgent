@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef } from "react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { useGSAP } from "@gsap/react";
 import gsap from "gsap";
 import GlassCard from "./GlassCard";
@@ -11,6 +11,7 @@ interface Props {
   result: QualityCompareResponse;
   originalPreviewUrl: string;
   generatedBase64: string;
+  onSuggestResynthesize?: (excludeIds: string[]) => void;
 }
 
 interface ScoreBarProps {
@@ -68,9 +69,10 @@ function scoreLabel(v: number): string {
   return "FAIL";
 }
 
-export default function QualityTestPanel({ result, originalPreviewUrl, generatedBase64 }: Props) {
+export default function QualityTestPanel({ result, originalPreviewUrl, generatedBase64, onSuggestResynthesize }: Props) {
   const { quality_score, passed } = result;
   const overall = quality_score.overall;
+  const hasSuggestion = result.suggested_exclude_ids?.length > 0;
 
   return (
     <GlassCard className="p-5 space-y-5" animate>
@@ -160,6 +162,46 @@ export default function QualityTestPanel({ result, originalPreviewUrl, generated
         <p className="text-white/20 text-xs mb-1">Agent Feedback</p>
         <p className="text-white/60 text-sm">{quality_score.feedback}</p>
       </motion.div>
+
+      {/* Lv2: 개선 추천 패널 */}
+      <AnimatePresence>
+        {hasSuggestion && (
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            transition={{ delay: 1.5 }}
+            className="rounded-xl px-4 py-3 space-y-3"
+            style={{
+              background: "rgba(251,191,36,0.06)",
+              border: "1px solid rgba(251,191,36,0.2)",
+            }}
+          >
+            <div className="flex items-center gap-2">
+              <span className="text-yellow-400 text-xs font-medium">품질 개선 추천</span>
+              <span className="text-xs px-2 py-0.5 rounded-full bg-yellow-400/10 text-yellow-400/70">
+                자동 분석
+              </span>
+            </div>
+            {result.improvement_tip && (
+              <p className="text-white/40 text-xs leading-relaxed">{result.improvement_tip}</p>
+            )}
+            <motion.button
+              onClick={() => onSuggestResynthesize?.(result.suggested_exclude_ids)}
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              className="w-full py-2 rounded-xl text-xs font-medium transition-all"
+              style={{
+                background: "linear-gradient(135deg, rgba(251,191,36,0.15), rgba(124,58,237,0.15))",
+                border: "1px solid rgba(251,191,36,0.3)",
+                color: "rgba(255,255,255,0.8)",
+              }}
+            >
+              추천 적용 후 프롬프트 재합성 →
+            </motion.button>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </GlassCard>
   );
 }

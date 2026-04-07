@@ -37,6 +37,8 @@ export default function Home() {
   // Tab 2 상태
   const [synthesizedPrompt, setSynthesizedPrompt] = useState<string | null>(null);
   const [referenceImageUrls, setReferenceImageUrls] = useState<string[]>([]);
+  const [usedImageIds, setUsedImageIds] = useState<string[]>([]);
+  const [suggestedExcludeIds, setSuggestedExcludeIds] = useState<string[]>([]);
   const [generateResult, setGenerateResult]   = useState<GenerateResponse | null>(null);
   const [qualityResult, setQualityResult]     = useState<QualityCompareResponse | null>(null);
   const [latestPreviewUrl, setLatestPreviewUrl] = useState<string | null>(null);
@@ -77,9 +79,11 @@ export default function Home() {
   };
 
   // ── Tab 2 handlers ────────────────────────────────────────────────────────
-  const handlePromptReady = async (prompt: string, refUrls: string[]) => {
+  const handlePromptReady = async (prompt: string, refUrls: string[], imageIds: string[]) => {
     setSynthesizedPrompt(prompt);
     setReferenceImageUrls(refUrls);
+    setUsedImageIds(imageIds);
+    setSuggestedExcludeIds([]);
     await pushStep("rag_search");
     await pushStep("prompt_ready", 200);
   };
@@ -93,8 +97,13 @@ export default function Home() {
       synthesizedPrompt,
       latestAnalyze?.style_dna,
       referenceImageUrls,
+      usedImageIds,
     );
     setGenerateResult(result);
+  };
+
+  const handleSuggestResynthesize = (excludeIds: string[]) => {
+    setSuggestedExcludeIds(excludeIds);
   };
 
   const handleQualityResult = async (result: QualityCompareResponse) => {
@@ -346,6 +355,7 @@ export default function Home() {
                       hasData={hasCollectionData}
                       collectionName={selectedCollection}
                       onPromptReady={handlePromptReady}
+                      suggestedExcludeIds={suggestedExcludeIds}
                     />
 
                     {/* 이미지 생성 버튼 */}
@@ -390,6 +400,7 @@ export default function Home() {
                             result={qualityResult}
                             originalPreviewUrl={latestPreviewUrl}
                             generatedBase64={generateResult.image_base64}
+                            onSuggestResynthesize={handleSuggestResynthesize}
                           />
                         </motion.div>
                       )}

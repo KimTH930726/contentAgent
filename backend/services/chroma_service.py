@@ -90,15 +90,23 @@ def search_style_dna(
     for i, doc_id in enumerate(results["ids"][0]):
         metadata = results["metadatas"][0][i]
         distance = results["distances"][0][i]
-        score = round(1 - distance, 4)
+        cosine_score = round(1 - distance, 4)
+
+        # Lv1: 품질 이력 가중치 적용 (avg_quality_score 0~1, 가중치 ±40%)
+        avg_quality = float(metadata.get("avg_quality_score", 0.5))
+        weighted = round(cosine_score * (1 + 0.4 * (avg_quality - 0.5)), 4)
+
         style_dna = StyleDNA(**json.loads(metadata["style_dna_json"]))
         search_results.append(SearchResult(
             image_id=doc_id,
             filename=metadata["filename"],
-            score=score,
+            score=weighted,
             style_dna=style_dna,
             image_url=metadata.get("image_url"),
         ))
+
+    # 품질 가중치 반영 후 재정렬
+    search_results.sort(key=lambda r: r.score, reverse=True)
     return search_results
 
 
@@ -140,6 +148,22 @@ def get_collections_summary() -> list:
         if len(summary[cn]["preview_colors"]) == 0:
             summary[cn]["preview_colors"] = e["style_dna"].color_palette[:4]
     return [{"name": k, **v} for k, v in summary.items()]
+
+
+def update_quality_score(image_id: str, score: float) -> None:
+    """품질 평가 결과를 누적 저장 (최근 10회 평균 유지)."""
+    collection = get_collection()
+    existing = collection.get(ids=[image_id], include=["metadatas"])
+    if not existing["ids"]:
+        return
+    metadata = existing["metadatas"][0]
+    scores = json.loads(metadata.get("quality_scores", "[]"))
+    scores.append(round(score, 3))
+    scores = scores[-10:]  # 최근 10회만 유지
+    avg = round(sum(scores) / len(scores), 3)
+    metadata["quality_scores"] = json.dumps(scores)
+    metadata["avg_quality_score"] = avg
+    collection.update(ids=[image_id], metadatas=[metadata])
 
 
 def delete_entry(image_id: str) -> bool:

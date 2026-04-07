@@ -37,6 +37,7 @@ export interface GenerateResponse {
   prompt_used: string;
   image_base64: string;
   reference_image_urls?: string[];
+  used_image_ids: string[];
 }
 
 export interface QualityScore {
@@ -50,6 +51,8 @@ export interface QualityScore {
 export interface QualityCompareResponse {
   quality_score: QualityScore;
   passed: boolean;
+  suggested_exclude_ids: string[];
+  improvement_tip: string;
 }
 
 export interface CollectionInfo {
@@ -159,6 +162,7 @@ export async function generateImage(
   synthesizedPrompt: string,
   styleDna?: StyleDNA,
   referenceImageUrls?: string[],
+  usedImageIds?: string[],
 ): Promise<GenerateResponse> {
   const res = await fetch(`${BASE_URL}/generate`, {
     method: "POST",
@@ -167,6 +171,7 @@ export async function generateImage(
       synthesized_prompt: synthesizedPrompt,
       style_dna: styleDna ?? null,
       reference_image_urls: referenceImageUrls ?? [],
+      used_image_ids: usedImageIds ?? [],
     }),
   });
   if (!res.ok) throw new Error(await res.text());
@@ -178,6 +183,7 @@ export async function generateImage(
 export async function compareQuality(
   originalImageId: string,
   generatedImageBase64: string,
+  usedImageIds?: string[],
 ): Promise<QualityCompareResponse> {
   const res = await fetch(`${BASE_URL}/quality/compare`, {
     method: "POST",
@@ -185,6 +191,7 @@ export async function compareQuality(
     body: JSON.stringify({
       original_image_id: originalImageId,
       generated_image_base64: generatedImageBase64,
+      used_image_ids: usedImageIds ?? [],
     }),
   });
   if (!res.ok) throw new Error(await res.text());

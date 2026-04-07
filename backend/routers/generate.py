@@ -13,4 +13,5 @@ async def generate_image(request: GenerateRequest):
         generation_id=str(uuid.uuid4()),
         prompt_used=request.synthesized_prompt,
         image_base64=image_base64,
+        used_image_ids=request.used_image_ids,
     )

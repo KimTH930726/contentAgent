@@ -61,12 +61,14 @@ class GenerateRequest(BaseModel):
     synthesized_prompt: str
     style_dna: Optional[StyleDNA] = None
     reference_image_urls: List[str] = []
+    used_image_ids: List[str] = []   # RAG에서 사용한 image_id 목록
 
 
 class GenerateResponse(BaseModel):
     generation_id: str
     prompt_used: str
     image_base64: str  # PNG as base64
+    used_image_ids: List[str] = []
 
 
 # ── Reverse Quality Test ────────────────────────────────────────────────────
@@ -74,6 +76,7 @@ class GenerateResponse(BaseModel):
 class QualityCompareRequest(BaseModel):
     original_image_id: str
     generated_image_base64: str
+    used_image_ids: List[str] = []   # 품질 피드백 반영용
 
 
 class QualityScore(BaseModel):
@@ -87,3 +90,5 @@ class QualityScore(BaseModel):
 class QualityCompareResponse(BaseModel):
     quality_score: QualityScore
     passed: bool
+    suggested_exclude_ids: List[str] = []   # Lv2: 제외 추천 image_ids
+    improvement_tip: str = ""               # Lv2: 개선 힌트

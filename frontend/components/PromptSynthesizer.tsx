@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useGSAP } from "@gsap/react";
 import gsap from "gsap";
@@ -10,10 +10,11 @@ import { generatePrompt, type PromptGenerateResponse } from "@/lib/api";
 interface Props {
   hasData: boolean;
   collectionName?: string;
-  onPromptReady?: (prompt: string, referenceImageUrls: string[]) => void;
+  onPromptReady?: (prompt: string, referenceImageUrls: string[], imageIds: string[]) => void;
+  suggestedExcludeIds?: string[];   // Lv2: 품질 평가 후 외부에서 전달되는 제외 추천
 }
 
-export default function PromptSynthesizer({ hasData, collectionName, onPromptReady }: Props) {
+export default function PromptSynthesizer({ hasData, collectionName, onPromptReady, suggestedExcludeIds }: Props) {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [resyncing, setResyncing] = useState(false);
@@ -22,6 +23,13 @@ export default function PromptSynthesizer({ hasData, collectionName, onPromptRea
   const [excludedIds, setExcludedIds] = useState<Set<string>>(new Set());
   const borderRef = useRef<HTMLDivElement>(null);
   const rotationRef = useRef({ angle: 0 });
+
+  // Lv2: 외부에서 제외 추천이 들어오면 자동 적용
+  useEffect(() => {
+    if (suggestedExcludeIds && suggestedExcludeIds.length > 0) {
+      setExcludedIds(new Set(suggestedExcludeIds));
+    }
+  }, [suggestedExcludeIds]);
 
   // GSAP spinning gradient border on result card
   useGSAP(() => {
@@ -52,7 +60,8 @@ export default function PromptSynthesizer({ hasData, collectionName, onPromptRea
     try {
       const data = await generatePrompt(input.trim(), collectionName);
       setResult(data);
-      onPromptReady?.(data.synthesized_prompt, data.reference_image_urls ?? []);
+      const imageIds = data.retrieved.results.map((r) => r.image_id);
+      onPromptReady?.(data.synthesized_prompt, data.reference_image_urls ?? [], imageIds);
     } catch {
       // No-op
     } finally {
@@ -80,7 +89,8 @@ export default function PromptSynthesizer({ hasData, collectionName, onPromptRea
       );
       setResult(data);
       setExcludedIds(new Set());
-      onPromptReady?.(data.synthesized_prompt, data.reference_image_urls ?? []);
+      const imageIds = data.retrieved.results.map((r) => r.image_id);
+      onPromptReady?.(data.synthesized_prompt, data.reference_image_urls ?? [], imageIds);
     } catch {
       // No-op
     } finally {
@@ -155,6 +165,27 @@ export default function PromptSynthesizer({ hasData, collectionName, onPromptRea
               }}
             >
               <div className="rounded-2xl bg-[#0d0d20] p-5 space-y-4">
+                {/* Lv2: 품질 개선 추천 배너 */}
+                <AnimatePresence>
+                  {suggestedExcludeIds && suggestedExcludeIds.length > 0 && excludedIds.size > 0 && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0 }}
+                      className="rounded-xl px-3 py-2.5 flex items-center gap-2"
+                      style={{
+                        background: "rgba(251,191,36,0.08)",
+                        border: "1px solid rgba(251,191,36,0.25)",
+                      }}
+                    >
+                      <span className="text-yellow-400 text-xs">품질 개선 추천</span>
+                      <span className="text-white/40 text-xs flex-1">
+                        낮은 품질 이력 이미지 {excludedIds.size}개가 자동으로 제외됐습니다. 재합성하면 품질이 개선될 수 있어요.
+                      </span>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
                 {/* 번역된 쿼리 표시 */}
                 {result.translated_query && result.translated_query !== result.user_input && (
                   <div className="rounded-xl bg-white/[0.03] border border-white/[0.06] px-3 py-2 flex items-center gap-2 flex-wrap">

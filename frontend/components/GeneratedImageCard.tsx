@@ -20,7 +20,7 @@ export default function GeneratedImageCard({ data, originalImageId, styleDna, on
   const handleQualityTest = async () => {
     setTesting(true);
     try {
-      const result = await compareQuality(originalImageId, data.image_base64);
+      const result = await compareQuality(originalImageId, data.image_base64, data.used_image_ids);
       onQualityResult(result);
     } finally {
       setTesting(false);
